@@ -1,49 +1,30 @@
 package com.fractaldev.solidexample.ui
 
-import android.content.Context
+import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.fractaldev.solidexample.data.repositroy.UserRepository
+import com.fractaldev.solidexample.base.BaseViewModel
+import com.fractaldev.solidexample.domain.model.User
+import com.fractaldev.solidexample.domain.repository.UserRepository
+import com.fractaldev.solidexample.utils.UserIdGenerator
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
-import java.util.UUID
-import com.fractaldev.solidexample.data.databse.model.User as DatabaseUser
-import com.fractaldev.solidexample.data.network.model.User as NetworkUser
+import javax.inject.Inject
 
-class UsersListViewModel(context: Context) : ViewModel() {
+@HiltViewModel
+class UsersListViewModel @Inject constructor(
+    private val userRepository: UserRepository,
+    private val idGenerator: UserIdGenerator
+) : BaseViewModel() {
 
-    private val userRepository = UserRepository(context)
-    val users = MutableLiveData<List<DatabaseUser>>()
-    val error = MutableLiveData<Throwable>()
+    private val mutableUsers = MutableLiveData<List<User>>()
+    val users: LiveData<List<User>> = mutableUsers
+    private val mutableError = MutableLiveData<Throwable>()
+    val error: LiveData<Throwable> = mutableError
 
     fun getAllUsers() {
         viewModelScope.launch {
-            val users = try {
-                val networkUsers = userRepository.getAllNetworkUsers()
-                networkUsers.forEach { networkUser ->
-                    val databaseUser = DatabaseUser(
-                        networkUser.id!!,
-                        networkUser.firstName!!,
-                        networkUser.lastName!!,
-                        networkUser.dateOfBirth!!,
-                        networkUser.address!!
-                    )
-                    userRepository.createDatabaseUser(databaseUser)
-                }
-                networkUsers.map {
-                    DatabaseUser(
-                        it.id!!,
-                        it.firstName!!,
-                        it.lastName!!,
-                        it.dateOfBirth!!,
-                        it.address!!
-                    )
-                }
-            } catch (e: Exception) {
-                error.postValue(e)
-                userRepository.getAllDatabaseUsers()
-            }
-            this@UsersListViewModel.users.postValue(users)
+            userRepository.getAllUsers().wrap(mutableUsers::postValue, mutableError::postValue)
         }
     }
 
@@ -54,31 +35,18 @@ class UsersListViewModel(context: Context) : ViewModel() {
         address: String
     ) {
         viewModelScope.launch {
-            val networkUser = NetworkUser(
-                generateUserId(),
+            val user = User(
+                idGenerator.generateUserId(),
                 firstName,
                 lastName,
                 dateOfBirth,
                 address
             )
-            try {
-                userRepository.createNetworkUser(networkUser)
-                val databaseUser = DatabaseUser(
-                    networkUser.id!!,
-                    networkUser.firstName!!,
-                    networkUser.lastName!!,
-                    networkUser.dateOfBirth!!,
-                    networkUser.address!!
-                )
-                userRepository.createDatabaseUser(databaseUser)
-            } catch (e: Exception) {
-                error.postValue(e)
-            }
-
+            userRepository.createUser(user).wrap(
+                onSuccess = { getAllUsers() },
+                mutableError::postValue
+            )
         }
     }
 
-    fun generateUserId(): String {
-        return UUID.randomUUID().toString()
-    }
 }

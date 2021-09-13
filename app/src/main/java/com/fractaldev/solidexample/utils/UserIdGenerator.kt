@@ -1,6 +1,12 @@
 package com.fractaldev.solidexample.utils
 
-class UserIdGenerator {
+import java.util.UUID
+import javax.inject.Inject
 
+class UserIdGenerator @Inject constructor() {
+
+    fun generateUserId(): String {
+        return UUID.randomUUID().toString()
+    }
 
 }

@@ -1,67 +1,43 @@
 package com.fractaldev.solidexample.ui
 
-import android.content.Context
+import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.fractaldev.solidexample.data.repositroy.UserRepository
+import com.fractaldev.solidexample.base.BaseViewModel
+import com.fractaldev.solidexample.domain.model.User
+import com.fractaldev.solidexample.domain.repository.UserRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
-import java.lang.Exception
-import com.fractaldev.solidexample.data.databse.model.User as DatabaseUser
-import com.fractaldev.solidexample.data.network.model.User as NetworkUser
+import javax.inject.Inject
 
-class UserViewModel(context: Context) : ViewModel() {
+@HiltViewModel
+class UserViewModel @Inject constructor(
+    private val userRepository: UserRepository
+) : BaseViewModel() {
 
-    private val userRepository = UserRepository(context)
-    val user = MutableLiveData<DatabaseUser>()
-    val error = MutableLiveData<Throwable>()
+    private val mutableUser = MutableLiveData<User>()
+    val user: LiveData<User> = mutableUser
+    private val mutableError = MutableLiveData<Throwable>()
+    val error: LiveData<Throwable> = mutableError
 
     fun getUserById(id: String) {
         viewModelScope.launch {
-            val user = try {
-                val networkUser = userRepository.getNetworkUserById(id)
-                val databaseUser = DatabaseUser(
-                    networkUser.id!!,
-                    networkUser.firstName!!,
-                    networkUser.lastName!!,
-                    networkUser.dateOfBirth!!,
-                    networkUser.address!!
-                )
-                databaseUser
-            } catch (e: Exception) {
-                error.postValue(e)
-                userRepository.getDatabaseUserById(id)
-            }
-            this@UserViewModel.user.postValue(user)
+            userRepository.getUserById(id).wrap(mutableUser::postValue, mutableError::postValue)
         }
     }
 
-    fun updateUser(updatedUser: DatabaseUser) {
+    fun updateUser(updatedUser: User) {
         viewModelScope.launch {
-            try {
-                val networkUser = NetworkUser(
-                    updatedUser.id,
-                    updatedUser.firstName,
-                    updatedUser.lastName,
-                    updatedUser.dateOfBirth,
-                    updatedUser.address
-                )
-                userRepository.updateNetworkUser(networkUser)
-                userRepository.updateDatabaseUser(updatedUser)
-            } catch (e: Exception) {
-                error.postValue(e)
-            }
+            userRepository.updateUser(updatedUser).wrap(
+                onSuccess = { getUserById(updatedUser.id) },
+                mutableError::postValue
+            )
         }
     }
 
-    fun deleteUser(user: DatabaseUser) {
+    fun deleteUser(user: User) {
         viewModelScope.launch {
-            try {
-                userRepository.deleteNetworkUserById(user.id)
-                userRepository.deleteDatabaseUserById(user.id)
-            } catch (e: Exception) {
-                error.postValue(e)
-            }
+            userRepository.deleteUserById(user.id).wrap(onError = mutableError::postValue)
         }
     }
 
